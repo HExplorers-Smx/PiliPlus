@@ -421,7 +421,7 @@ class HeaderControlState extends State<HeaderControl>
                     dense: true,
                     onTap: () {
                       Get.back();
-                      widget.videoDetailCtr.downloadCurrentAudio();
+                      widget.videoDetailCtr.showAudioDownloadSheet();
                     },
                     leading: const Icon(Icons.audio_file_outlined, size: 20),
                     title: const Text('下载音频', style: titleStyle),

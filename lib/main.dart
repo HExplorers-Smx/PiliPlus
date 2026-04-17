@@ -46,34 +46,58 @@ import 'package:window_manager/window_manager.dart' hide calcWindowPosition;
 
 WebViewEnvironment? webViewEnvironment;
 
-Future<void> _initDownPath() async {
-  if (PlatformUtils.isDesktop) {
-    final customDownPath = Pref.downloadPath;
-    if (customDownPath != null && customDownPath.isNotEmpty) {
-      try {
-        final dir = Directory(customDownPath);
-        if (!dir.existsSync()) {
-          await dir.create(recursive: true);
-        }
-        downloadPath = customDownPath;
-      } catch (e) {
-        downloadPath = defDownloadPath;
-        await GStorage.setting.delete(SettingBoxKey.downloadPath);
-        if (kDebugMode) {
-          debugPrint('download path error: $e');
-        }
+Future<String> _resolveStoragePath({
+  required String? customPath,
+  required String defaultPath,
+  String? storageKey,
+}) async {
+  if (customPath != null && customPath.isNotEmpty) {
+    try {
+      final dir = Directory(customPath);
+      if (!dir.existsSync()) {
+        await dir.create(recursive: true);
       }
-    } else {
-      downloadPath = defDownloadPath;
+      return dir.path;
+    } catch (e) {
+      if (storageKey != null) {
+        await GStorage.setting.delete(storageKey);
+      }
+      if (kDebugMode) {
+        debugPrint('storage path error: $e');
+      }
     }
+  }
+
+  final dir = Directory(defaultPath);
+  if (!dir.existsSync()) {
+    await dir.create(recursive: true);
+  }
+  return dir.path;
+}
+
+Future<void> _initDownPath() async {
+  String defaultVideoPath;
+  if (PlatformUtils.isDesktop) {
+    defaultVideoPath = defDownloadPath;
   } else if (Platform.isAndroid) {
     final externalStorageDirPath = (await getExternalStorageDirectory())?.path;
-    downloadPath = externalStorageDirPath != null
+    defaultVideoPath = externalStorageDirPath != null
         ? path.join(externalStorageDirPath, PathUtils.downloadDir)
         : defDownloadPath;
   } else {
-    downloadPath = defDownloadPath;
+    defaultVideoPath = defDownloadPath;
   }
+
+  downloadPath = await _resolveStoragePath(
+    customPath: Pref.downloadPath,
+    defaultPath: defaultVideoPath,
+    storageKey: SettingBoxKey.downloadPath,
+  );
+  audioDownloadPath = await _resolveStoragePath(
+    customPath: Pref.audioDownloadPath,
+    defaultPath: defAudioDownloadPath,
+    storageKey: SettingBoxKey.audioDownloadPath,
+  );
 }
 
 Future<void> _initTmpPath() async {

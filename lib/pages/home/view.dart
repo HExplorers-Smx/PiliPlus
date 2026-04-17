@@ -91,11 +91,11 @@ class _HomePageState extends CommonPageState<HomePage>
     const padding = EdgeInsets.fromLTRB(14, 6, 14, 0);
     final child = Row(
       children: [
+        userAvatar(theme: theme, mainController: _mainController),
+        const SizedBox(width: 8),
         searchBar(theme),
         const SizedBox(width: 4),
         msgBadge(_mainController),
-        const SizedBox(width: 8),
-        userAvatar(theme: theme, mainController: _mainController),
       ],
     );
     if (_homeController.hideTopBar) {

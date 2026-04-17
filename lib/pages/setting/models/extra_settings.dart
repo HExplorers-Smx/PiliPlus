@@ -13,6 +13,7 @@ import 'package:PiliPlus/http/fav.dart';
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/models/common/audio_normalization.dart';
 import 'package:PiliPlus/models/common/dynamic/dynamics_type.dart';
+import 'package:PiliPlus/models/common/home_tab_type.dart';
 import 'package:PiliPlus/models/common/member/tab_type.dart';
 import 'package:PiliPlus/models/common/reply/reply_sort_type.dart';
 import 'package:PiliPlus/models/common/sponsor_block/skip_type.dart';
@@ -51,7 +52,7 @@ import 'package:get/get.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 
 List<SettingsModel> get extraSettings => [
-  if (PlatformUtils.isDesktop) ...[
+  if (PlatformUtils.isDesktop)
     SwitchModel(
       title: '退出时最小化',
       leading: const Icon(Icons.exit_to_app),
@@ -63,13 +64,18 @@ List<SettingsModel> get extraSettings => [
         } catch (_) {}
       },
     ),
-    NormalModel(
-      title: '缓存路径',
-      getSubtitle: () => downloadPath,
-      leading: const Icon(Icons.storage),
-      onTap: _showDownPathDialog,
-    ),
-  ],
+  NormalModel(
+    title: '视频下载目录',
+    getSubtitle: () => downloadPath,
+    leading: const Icon(Icons.video_library_outlined),
+    onTap: _showVideoDownPathDialog,
+  ),
+  NormalModel(
+    title: '音频下载目录',
+    getSubtitle: () => audioDownloadPath,
+    leading: const Icon(Icons.audio_file_outlined),
+    onTap: _showAudioDownPathDialog,
+  ),
   SwitchModel(
     title: '空降助手',
     subtitle: '点击配置',
@@ -608,6 +614,19 @@ List<SettingsModel> get extraSettings => [
     getSubtitle: () => '当前优先展示「${Pref.memberTab.title}」',
     onTap: _showMemberTabDialog,
   ),
+  NormalModel(
+    title: '首页自定义展示TAB',
+    subtitle: '勾选要展示的首页TAB并支持排序',
+    leading: const Icon(Icons.dashboard_customize_outlined),
+    onTap: (context, setState) => Get.toNamed(
+      '/barSetting',
+      arguments: {
+        'key': SettingBoxKey.tabBarSort,
+        'defaultBars': HomeTabType.values,
+        'title': '首页标签页',
+      },
+    ),
+  ),
   SwitchModel(
     title: '显示UP主页小店TAB',
     leading: const Icon(Icons.shop_outlined),
@@ -745,11 +764,19 @@ Future<void> audioNormalization(
   }
 }
 
-void _showDownPathDialog(BuildContext context, VoidCallback setState) {
+Future<void> _showPathDialog({
+  required BuildContext context,
+  required VoidCallback setState,
+  required String currentPath,
+  required String defaultPath,
+  required String title,
+  required Future<void> Function(String? path) onUpdate,
+}) async {
   showDialog(
     context: context,
     builder: (context) => AlertDialog(
       clipBehavior: Clip.hardEdge,
+      title: Text(title),
       contentPadding: const EdgeInsets.symmetric(vertical: 12),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -757,33 +784,32 @@ void _showDownPathDialog(BuildContext context, VoidCallback setState) {
           ListTile(
             onTap: () {
               Get.back();
-              Utils.copyText(downloadPath);
+              Utils.copyText(currentPath);
             },
             dense: true,
-            title: const Text('复制', style: TextStyle(fontSize: 14)),
-          ),
-          ListTile(
-            onTap: () {
-              Get.back();
-              final defPath = defDownloadPath;
-              if (downloadPath == defPath) return;
-              downloadPath = defPath;
-              setState();
-              Get.find<DownloadService>().initDownloadList();
-              GStorage.setting.delete(SettingBoxKey.downloadPath);
-            },
-            dense: true,
-            title: const Text('重置', style: TextStyle(fontSize: 14)),
+            title: const Text('复制当前路径', style: TextStyle(fontSize: 14)),
           ),
           ListTile(
             onTap: () async {
               Get.back();
-              final path = await FilePicker.getDirectoryPath();
-              if (path == null || path == downloadPath) return;
-              downloadPath = path;
+              if (currentPath == defaultPath) return;
+              await onUpdate(null);
               setState();
-              Get.find<DownloadService>().initDownloadList();
-              GStorage.setting.put(SettingBoxKey.downloadPath, path);
+            },
+            dense: true,
+            title: const Text('重置为默认路径', style: TextStyle(fontSize: 14)),
+          ),
+          ListTile(
+            onTap: () async {
+              Get.back();
+              try {
+                final path = await FilePicker.getDirectoryPath();
+                if (path == null || path == currentPath) return;
+                await onUpdate(path);
+                setState();
+              } catch (e) {
+                SmartDialog.showToast('当前平台暂不支持直接选择目录');
+              }
             },
             dense: true,
             title: const Text('设置新路径', style: TextStyle(fontSize: 14)),
@@ -791,6 +817,56 @@ void _showDownPathDialog(BuildContext context, VoidCallback setState) {
         ],
       ),
     ),
+  );
+}
+
+Future<void> _showVideoDownPathDialog(
+  BuildContext context,
+  VoidCallback setState,
+) async {
+  await _showPathDialog(
+    context: context,
+    setState: setState,
+    currentPath: downloadPath,
+    defaultPath: defDownloadPath,
+    title: '视频下载目录',
+    onUpdate: (String? path) async {
+      if (path == null) {
+        downloadPath = defDownloadPath;
+        await GStorage.setting.delete(SettingBoxKey.downloadPath);
+      } else {
+        await Directory(path).create(recursive: true);
+        downloadPath = path;
+        await GStorage.setting.put(SettingBoxKey.downloadPath, path);
+      }
+      if (Pref.audioDownloadPath == null || Pref.audioDownloadPath!.isEmpty) {
+        audioDownloadPath = defAudioDownloadPath;
+      }
+      Get.find<DownloadService>().initDownloadList();
+    },
+  );
+}
+
+Future<void> _showAudioDownPathDialog(
+  BuildContext context,
+  VoidCallback setState,
+) async {
+  await _showPathDialog(
+    context: context,
+    setState: setState,
+    currentPath: audioDownloadPath,
+    defaultPath: defAudioDownloadPath,
+    title: '音频下载目录',
+    onUpdate: (String? path) async {
+      if (path == null) {
+        audioDownloadPath = defAudioDownloadPath;
+        await GStorage.setting.delete(SettingBoxKey.audioDownloadPath);
+      } else {
+        await Directory(path).create(recursive: true);
+        audioDownloadPath = path;
+        await GStorage.setting.put(SettingBoxKey.audioDownloadPath, path);
+      }
+    },
   );
 }
 

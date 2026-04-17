@@ -1256,7 +1256,10 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
       if (!videoDetailController.isFileSource ||
           videoDetailController.entry.hasDashAudio)
         PopupMenuItem(
-          onTap: videoDetailController.downloadCurrentAudio,
+          onTap: () => Future.delayed(
+            Duration.zero,
+            videoDetailController.showAudioDownloadSheet,
+          ),
           child: const Text('下载音频'),
         ),
       if (!videoDetailController.isFileSource && videoDetailController.isUgc)

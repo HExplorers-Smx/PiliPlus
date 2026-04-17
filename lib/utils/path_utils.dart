@@ -7,9 +7,12 @@ late final String tmpDirPath;
 late final String appSupportDirPath;
 
 late String downloadPath;
+late String audioDownloadPath;
 
 String get defDownloadPath =>
     path.join(appSupportDirPath, PathUtils.downloadDir);
+
+String get defAudioDownloadPath => path.join(downloadPath, 'audio');
 
 abstract final class PathUtils {
   static const videoNameType1 = '0.mp4';
