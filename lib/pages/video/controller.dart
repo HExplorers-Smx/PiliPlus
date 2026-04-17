@@ -8,6 +8,7 @@ import 'package:PiliPlus/common/widgets/pair.dart';
 import 'package:PiliPlus/common/widgets/progress_bar/segment_progress_bar.dart';
 import 'package:PiliPlus/grpc/bilibili/app/listener/v1.pbenum.dart'
     show PlaylistSource;
+import 'package:PiliPlus/http/download.dart';
 import 'package:PiliPlus/http/fav.dart';
 import 'package:PiliPlus/http/init.dart';
 import 'package:PiliPlus/http/loading_state.dart';
@@ -58,6 +59,7 @@ import 'package:PiliPlus/utils/extension/file_ext.dart';
 import 'package:PiliPlus/utils/extension/iterable_ext.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
 import 'package:PiliPlus/utils/extension/size_ext.dart';
+import 'package:PiliPlus/utils/extension/string_ext.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/path_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
@@ -66,6 +68,7 @@ import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/utils.dart';
 import 'package:PiliPlus/utils/video_utils.dart';
 import 'package:extended_nested_scroll_view/extended_nested_scroll_view.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
@@ -1377,6 +1380,181 @@ class VideoDetailController extends GetxController
       audioUrl: audioUrl,
       extraId: extraId,
     );
+  }
+
+  String _sanitizeFileName(String input) {
+    final value = input
+        .replaceAll(RegExp(r'[<>:/\|?*"]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return value.isEmpty ? 'audio' : value;
+  }
+
+  String _audioExtension(AudioItem? item) {
+    final mimeType = item?.mimeType?.toLowerCase() ?? '';
+    final codecs = item?.codecs?.toLowerCase() ?? '';
+    if (mimeType.contains('flac') || codecs.contains('flac')) {
+      return '.flac';
+    }
+    if (codecs.contains('ec-3') || codecs.contains('eac3')) {
+      return '.eac3';
+    }
+    return '.m4a';
+  }
+
+  Future<String> _buildUniquePath(String dirPath, String fileName) async {
+    final ext = path.extension(fileName);
+    final baseName = path.basenameWithoutExtension(fileName);
+    var targetPath = path.join(dirPath, fileName);
+    var index = 1;
+    while (File(targetPath).existsSync()) {
+      targetPath = path.join(dirPath, '$baseName ($index)$ext');
+      index++;
+    }
+    return targetPath;
+  }
+
+  String _buildAudioBaseName() {
+    String title = args['title']?.toString() ?? '';
+    String? partTitle;
+
+    if (isFileSource) {
+      title = entry.title ?? title;
+    } else if (isUgc) {
+      try {
+        final videoDetail = Get.find<UgcIntroController>(tag: heroTag)
+            .videoDetail
+            .value;
+        if (videoDetail.title?.isNotEmpty == true) {
+          title = videoDetail.title!;
+        }
+        partTitle = videoDetail.pages
+            ?.firstWhereOrNull((e) => e.cid == cid.value)
+            ?.part;
+        if (partTitle == null) {
+          for (final section in videoDetail.ugcSeason?.sections ?? const []) {
+            for (final episode in section.episodes ?? const []) {
+              if (episode.cid == cid.value) {
+                partTitle = episode.title;
+                break;
+              }
+              final curPart = episode.pages?.firstWhereOrNull(
+                (e) => e.cid == cid.value,
+              );
+              if (curPart != null) {
+                partTitle = curPart.part;
+                break;
+              }
+            }
+            if (partTitle != null) break;
+          }
+        }
+      } catch (_) {}
+    } else {
+      try {
+        final pgcItem = Get.find<PgcIntroController>(tag: heroTag).pgcItem;
+        title = pgcItem.seasonTitle ?? pgcItem.title ?? title;
+        final episode = pgcItem.episodes?.firstWhereOrNull(
+          (e) => e.cid == cid.value,
+        );
+        partTitle = episode?.showTitle ?? episode?.longTitle ?? episode?.title;
+      } catch (_) {}
+    }
+
+    final qualityLabel = currentAudioQa?.desc;
+    final segments = <String>[
+      if (title.isNotEmpty) title,
+      if (partTitle?.isNotEmpty == true && partTitle != title) partTitle!,
+      if (qualityLabel?.isNotEmpty == true) qualityLabel!,
+      bvid,
+      'cid${cid.value}',
+    ];
+    return _sanitizeFileName(segments.join(' - '));
+  }
+
+  @pragma('vm:notify-debugger-on-exception')
+  Future<void> downloadCurrentAudio() async {
+    try {
+      AudioItem? currentAudioItem;
+      String? currentAudioUrl = audioUrl;
+
+      if (isFileSource) {
+        if (!entry.hasDashAudio || entry.typeTag == null) {
+          SmartDialog.showToast('当前缓存没有可单独导出的音频');
+          return;
+        }
+        final sourcePath = path.join(
+          entry.entryDirPath,
+          entry.typeTag!,
+          PathUtils.audioNameType2,
+        );
+        final sourceFile = File(sourcePath);
+        if (!sourceFile.existsSync()) {
+          SmartDialog.showToast('未找到已缓存的音频文件');
+          return;
+        }
+        final saveDir = Directory(path.join(downloadPath, 'audio'));
+        if (!saveDir.existsSync()) {
+          await saveDir.create(recursive: true);
+        }
+        final savePath = await _buildUniquePath(
+          saveDir.path,
+          '${_buildAudioBaseName()}.m4a',
+        );
+        SmartDialog.showLoading(msg: '正在保存音频');
+        await sourceFile.copy(savePath);
+        SmartDialog.dismiss();
+        SmartDialog.showToast('音频已保存到 audio 目录');
+        return;
+      }
+
+      if (data.dash?.audio case final audioList?
+          when audioList.isNotEmpty) {
+        final currentQa = currentAudioQa;
+        currentAudioItem = currentQa == null
+            ? audioList.first
+            : audioList.firstWhere(
+                (i) => i.id == currentQa.code,
+                orElse: () => audioList.first,
+              );
+        currentAudioUrl ??= VideoUtils.getCdnUrl(
+          currentAudioItem.playUrls,
+          isAudio: true,
+        );
+      }
+
+      if (currentAudioUrl == null || currentAudioUrl.isEmpty) {
+        SmartDialog.showToast('当前视频没有可单独下载的音频流');
+        return;
+      }
+
+      final saveDir = Directory(path.join(downloadPath, 'audio'));
+      if (!saveDir.existsSync()) {
+        await saveDir.create(recursive: true);
+      }
+      final savePath = await _buildUniquePath(
+        saveDir.path,
+        '${_buildAudioBaseName()}${_audioExtension(currentAudioItem)}',
+      );
+
+      SmartDialog.showLoading(msg: '正在下载音频');
+      await Request.http11Dio.download(
+        currentAudioUrl.http2https,
+        savePath,
+        options: Options(
+          headers: {
+            'referer': DownloadHttp.referer,
+            'user-agent': DownloadHttp.userAgent,
+          },
+        ),
+      );
+      SmartDialog.dismiss();
+      SmartDialog.showToast('音频已保存到 audio 目录');
+    } catch (e, s) {
+      SmartDialog.dismiss();
+      Utils.reportError(e, s);
+      SmartDialog.showToast('音频保存失败: $e');
+    }
   }
 
   Future<void> onDownload(BuildContext context) async {

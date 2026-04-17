@@ -1253,6 +1253,12 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
               ImageUtils.downloadImg([videoDetailController.cover.value]),
           child: const Text('保存封面'),
         ),
+      if (!videoDetailController.isFileSource ||
+          videoDetailController.entry.hasDashAudio)
+        PopupMenuItem(
+          onTap: videoDetailController.downloadCurrentAudio,
+          child: const Text('下载音频'),
+        ),
       if (!videoDetailController.isFileSource && videoDetailController.isUgc)
         PopupMenuItem(
           onTap: videoDetailController.toAudioPage,
