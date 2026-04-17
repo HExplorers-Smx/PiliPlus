@@ -17,6 +17,7 @@ import android.provider.MediaStore
 import android.provider.Settings
 import android.view.WindowManager.LayoutParams
 import androidx.core.net.toUri
+import com.example.piliplus.audio.AudioExportBridge
 import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -137,6 +138,30 @@ class MainActivity : AudioServiceActivity() {
                             .build()
                         setPictureInPictureParams(params)
                     }
+                }
+
+                "transcodeAudio" -> {
+                    val inputPath = call.argument<String>("inputPath")
+                    val outputPath = call.argument<String>("outputPath")
+                    val format = call.argument<String>("format")
+                    if (inputPath.isNullOrBlank() || outputPath.isNullOrBlank() || format.isNullOrBlank()) {
+                        result.error("INVALID_ARGS", "缺少音频导出参数", null)
+                        return@setMethodCallHandler
+                    }
+                    Thread {
+                        try {
+                            AudioExportBridge.transcodeAudio(inputPath, outputPath, format)
+                            runOnUiThread { result.success(true) }
+                        } catch (e: Exception) {
+                            runOnUiThread {
+                                result.error(
+                                    "AUDIO_EXPORT_FAILED",
+                                    e.message ?: "音频导出失败",
+                                    e.stackTraceToString()
+                                )
+                            }
+                        }
+                    }.start()
                 }
 
                 "createShortcut" -> {

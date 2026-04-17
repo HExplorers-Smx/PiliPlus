@@ -69,8 +69,6 @@ import 'package:PiliPlus/utils/utils.dart';
 import 'package:PiliPlus/utils/video_utils.dart';
 import 'package:extended_nested_scroll_view/extended_nested_scroll_view.dart';
 import 'package:dio/dio.dart';
-import 'package:ffmpeg_kit_flutter_new_audio/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new_audio/return_code.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
@@ -84,10 +82,10 @@ import 'package:path/path.dart' as path;
 enum AudioExportFormat {
   original('原始流直存', '不转码，速度最快', null),
   mp3('转为 MP3', '兼容性最好', '.mp3'),
-  m4a('转为 M4A/AAC', '体积与兼容性平衡', '.m4a'),
-  flac('转为 FLAC', '无损，体积更大', '.flac'),
-  wav('转为 WAV', '未压缩，体积最大', '.wav'),
-  opus('转为 OPUS', '体积更小', '.opus');
+  m4a('转为 M4A/AAC', 'AAC 装进 M4A，兼容性更稳', '.m4a'),
+  aac('转为 AAC', 'AAC 裸流（ADTS）', '.aac'),
+  flac('转为 FLAC', '无损压缩，比 WAV 更省空间', '.flac'),
+  wav('转为 WAV', '未压缩，体积最大', '.wav');
 
   const AudioExportFormat(this.title, this.subtitle, this.extension);
 
@@ -1684,56 +1682,23 @@ class VideoDetailController extends GetxController
     return tempPath;
   }
 
-  List<String> _ffmpegArgsForFormat(
-    AudioExportFormat format,
-    String inputPath,
-    String outputPath,
-  ) {
-    final args = <String>['-y', '-i', inputPath, '-vn', '-map', '0:a:0'];
-    switch (format) {
-      case AudioExportFormat.original:
-        return args..add(outputPath);
-      case AudioExportFormat.mp3:
-        args.addAll(['-c:a', 'libmp3lame', '-q:a', '2']);
-        break;
-      case AudioExportFormat.m4a:
-        args.addAll([
-          '-c:a',
-          'aac',
-          '-b:a',
-          '192k',
-          '-movflags',
-          '+faststart',
-        ]);
-        break;
-      case AudioExportFormat.flac:
-        args.addAll(['-c:a', 'flac']);
-        break;
-      case AudioExportFormat.wav:
-        args.addAll(['-c:a', 'pcm_s16le']);
-        break;
-      case AudioExportFormat.opus:
-        args.addAll(['-c:a', 'libopus', '-b:a', '160k', '-vbr', 'on']);
-        break;
-    }
-    args.add(outputPath);
-    return args;
-  }
-
   Future<void> _transcodeAudioFile({
     required String inputPath,
     required String outputPath,
     required AudioExportFormat exportFormat,
   }) async {
-    final session = await FFmpegKit.executeWithArguments(
-      _ffmpegArgsForFormat(exportFormat, inputPath, outputPath),
-    );
-    final returnCode = await session.getReturnCode();
-    if (ReturnCode.isSuccess(returnCode)) {
-      return;
+    if (!Platform.isAndroid) {
+      throw Exception('当前仅支持 Android 音频转码');
     }
-    final logs = await session.getAllLogsAsString();
-    throw Exception(logs?.trim().isNotEmpty == true ? logs : 'FFmpeg 转码失败');
+    try {
+      await Utils.channel.invokeMethod('transcodeAudio', {
+        'inputPath': inputPath,
+        'outputPath': outputPath,
+        'format': exportFormat.name,
+      });
+    } on Exception catch (e) {
+      throw Exception('音频转码失败: $e');
+    }
   }
 
   String _buildAudioOutputExtension(

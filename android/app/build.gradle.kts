@@ -85,3 +85,8 @@ android {
 flutter {
     source = "../.."
 }
+
+
+dependencies {
+    implementation("com.github.naman14:TAndroidLame:1.1")
+}
