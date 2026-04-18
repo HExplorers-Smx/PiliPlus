@@ -314,6 +314,10 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
   }
 
   Future<void> setBrightness(double value) async {
+    final lastValue = plPlayerController.brightness.value;
+    if (lastValue >= 0 && (lastValue - value).abs() < 0.01) {
+      return;
+    }
     try {
       if (Platform.isIOS || plPlayerController.setSystemBrightness) {
         await ScreenBrightnessPlatform.instance.setSystemScreenBrightness(
@@ -1079,7 +1083,11 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
       final double level = maxHeight * 3;
       final double brightness = _brightnessValue.value - delta.dy / level;
       final double result = brightness.clamp(0.0, 1.0);
-      setBrightness(result);
+      EasyThrottle.throttle(
+        'setBrightness$hashCode',
+        const Duration(milliseconds: 32),
+        () => setBrightness(result),
+      );
     } else if (_gestureType == GestureType.center) {
       // 全屏
       const double threshold = 2.5; // 滑动阈值
@@ -1110,8 +1118,8 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
       // 右边区域
       final double level = maxHeight * 0.5;
       EasyThrottle.throttle(
-        'setVolume',
-        const Duration(milliseconds: 20),
+        'setVolume$hashCode',
+        const Duration(milliseconds: 32),
         () {
           final double volume = clampDouble(
             plPlayerController.volume.value - delta.dy / level,
@@ -1319,8 +1327,8 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
 
       final double level = maxHeight * 0.5;
       EasyThrottle.throttle(
-        'setVolume',
-        const Duration(milliseconds: 20),
+        'setVolume$hashCode',
+        const Duration(milliseconds: 32),
         () {
           final double volume = clampDouble(
             plPlayerController.volume.value - event.localPanDelta.dy / level,
@@ -1372,7 +1380,10 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
         _videoWidget,
 
         if (widget.danmuWidget case final danmaku?)
-          Positioned.fill(top: 4, child: danmaku),
+          Positioned.fill(
+            top: 4,
+            child: RepaintBoundary(child: danmaku),
+          ),
 
         if (!isLive)
           Positioned.fill(

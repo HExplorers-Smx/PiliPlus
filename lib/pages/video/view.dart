@@ -1383,16 +1383,7 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
       if (videoDetailController.showReply) '评论',
       if (_shouldShowSeasonPanel) '播放列表',
     ];
-    if (videoDetailController.tabCtr.length != tabs.length) {
-      videoDetailController.tabCtr.dispose();
-      videoDetailController.tabCtr = TabController(
-        vsync: this,
-        length: tabs.length,
-        initialIndex: tabs.isEmpty
-            ? 0
-            : videoDetailController.tabCtr.index.clamp(0, tabs.length - 1),
-      );
-    }
+    videoDetailController.syncTabControllerForTabs(tabs);
 
     final flag = !needIndicator || tabs.length == 1;
     Widget tabBar() => TabBar(

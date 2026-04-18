@@ -466,6 +466,11 @@ class PlPlayerController with BlockConfigMixin {
     }
   }
 
+  Future<void> _syncWakelock([bool? isPlaying]) {
+    final playing = isPlaying ?? (_videoPlayerController?.state.playing ?? false);
+    return WakelockPlus.toggle(enable: playing && !onlyPlayAudio.value);
+  }
+
   static PlPlayerController? get instance => _instance;
 
   static bool instanceExists() {
@@ -516,6 +521,8 @@ class PlPlayerController with BlockConfigMixin {
 
   bool visible = true;
 
+  bool _pageAutoRotateEnabled = true;
+
   DeviceOrientation? _orientation;
   late final checkIsAutoRotate = Platform.isAndroid && mode != .gravity;
   StreamSubscription<OrientationParams>? _orientationListener;
@@ -526,12 +533,12 @@ class PlPlayerController with BlockConfigMixin {
   }
 
   void _onOrientationChanged(OrientationParams param) {
-    if (!visible) return;
+    final bool isFs = isFullScreen.value;
+    if (!visible || (!_pageAutoRotateEnabled && !isFs)) return;
     final orientation = _orientation = param.orientation;
-    final isFullScreen = this.isFullScreen.value;
     if (checkIsAutoRotate &&
         param.isAutoRotate != true &&
-        (!isFullScreen ||
+        (!isFs ||
             _isVertical ||
             orientation == .portraitUp ||
             orientation == .portraitDown)) {
@@ -540,7 +547,7 @@ class PlPlayerController with BlockConfigMixin {
     switch (orientation) {
       case .portraitUp:
         if (!_isVertical && controlsLock.value) return;
-        if (!horizontalScreen && !_isVertical && isFullScreen) {
+        if (!horizontalScreen && !_isVertical && isFs) {
           if (!isManualFS) {
             triggerFullScreen(status: false, orientation: orientation);
           }
@@ -552,13 +559,13 @@ class PlPlayerController with BlockConfigMixin {
         if (!_isVertical && controlsLock.value) return;
         portraitDownMode();
       case .landscapeLeft:
-        if (!horizontalScreen && !isFullScreen) {
+        if (!horizontalScreen && !isFs) {
           triggerFullScreen(orientation: orientation, isManualFS: false);
         } else {
           landscapeLeftMode();
         }
       case .landscapeRight:
-        if (!horizontalScreen && !isFullScreen) {
+        if (!horizontalScreen && !isFs) {
           triggerFullScreen(orientation: orientation, isManualFS: false);
         } else {
           landscapeRightMode();
@@ -766,7 +773,12 @@ class PlPlayerController with BlockConfigMixin {
       'video-sync': Pref.videoSync,
     };
     if (Platform.isAndroid) {
-      opt['volume-max'] = '100';
+      final playerVolumeBoost = Pref.playerVolumeBoost.clamp(100, 300);
+      final playerVolumeGain = Pref.playerVolumeGain.clamp(0, 12);
+      opt['volume-max'] = playerVolumeBoost.toString();
+      opt['volume'] = playerVolumeBoost.toString();
+      opt['volume-gain-max'] = '12';
+      opt['volume-gain'] = playerVolumeGain.toString();
       opt['ao'] = Pref.audioOutput;
     } else if (PlatformUtils.isDesktop) {
       opt['volume'] = (volume.value * 100).toString();
@@ -848,32 +860,33 @@ class PlPlayerController with BlockConfigMixin {
         extras['audio-files'] =
             '"${Platform.isWindows ? audio.replaceAll(';', r'\;') : audio.replaceAll(':', r'\:')}"';
       }
-      if (kDebugMode || Platform.isAndroid) {
-        String audioNormalization = AudioNormalization.getParamFromConfig(
-          Pref.audioNormalization,
+    }
+
+    if (kDebugMode || Platform.isAndroid) {
+      String audioNormalization = AudioNormalization.getParamFromConfig(
+        Pref.audioNormalization,
+      );
+      if (volume != null && volume.isNotEmpty) {
+        audioNormalization = audioNormalization.replaceFirstMapped(
+          loudnormRegExp,
+          (i) =>
+              'loudnorm=${volume.format(
+                Map.fromEntries(
+                  i.group(1)!.split(':').map((item) {
+                    final parts = item.split('=');
+                    return MapEntry(parts[0].toLowerCase(), num.parse(parts[1]));
+                  }),
+                ),
+              )}',
         );
-        if (volume != null && volume.isNotEmpty) {
-          audioNormalization = audioNormalization.replaceFirstMapped(
-            loudnormRegExp,
-            (i) =>
-                'loudnorm=${volume.format(
-                  Map.fromEntries(
-                    i.group(1)!.split(':').map((item) {
-                      final parts = item.split('=');
-                      return MapEntry(parts[0].toLowerCase(), num.parse(parts[1]));
-                    }),
-                  ),
-                )}',
-          );
-        } else {
-          audioNormalization = audioNormalization.replaceFirst(
-            loudnormRegExp,
-            AudioNormalization.getParamFromConfig(Pref.fallbackNormalization),
-          );
-        }
-        if (audioNormalization.isNotEmpty) {
-          extras['lavfi-complex'] = '"[aid1] $audioNormalization [ao]"';
-        }
+      } else {
+        audioNormalization = audioNormalization.replaceFirst(
+          loudnormRegExp,
+          AudioNormalization.getParamFromConfig(Pref.fallbackNormalization),
+        );
+      }
+      if (audioNormalization.isNotEmpty) {
+        extras['lavfi-complex'] = '"[aid1] $audioNormalization [ao]"';
       }
     }
 
@@ -938,7 +951,7 @@ class PlPlayerController with BlockConfigMixin {
     final stream = player.stream;
     _subscriptions = [
       stream.playing.listen((event) {
-        WakelockPlus.toggle(enable: event);
+        _syncWakelock(event);
         if (event) {
           if (_shouldSetPip) {
             if (_isCurrVideoPage) {
@@ -1255,6 +1268,39 @@ class PlPlayerController with BlockConfigMixin {
   bool volumeInterceptEventStream = false;
 
   static final double maxVolume = PlatformUtils.isDesktop ? 2.0 : 1.0;
+
+  static Future<void>? applyPlayerVolumeBoostIfExists() {
+    return _instance?._applyPlayerVolumeBoost();
+  }
+
+  Future<void> _applyPlayerVolumeBoost() async {
+    if (!Platform.isAndroid || _videoPlayerController == null) {
+      return;
+    }
+    final playerVolumeBoost = Pref.playerVolumeBoost.clamp(100, 300);
+    final playerVolumeGain = Pref.playerVolumeGain.clamp(0, 12);
+    await _videoPlayerController!.command([
+      'set',
+      'volume-max',
+      playerVolumeBoost.toString(),
+    ]);
+    await _videoPlayerController!.command([
+      'set',
+      'volume',
+      playerVolumeBoost.toString(),
+    ]);
+    await _videoPlayerController!.command([
+      'set',
+      'volume-gain-max',
+      '12',
+    ]);
+    await _videoPlayerController!.command([
+      'set',
+      'volume-gain',
+      playerVolumeGain.toString(),
+    ]);
+  }
+
   Future<void> setVolume(double volume) async {
     if (this.volume.value != volume) {
       this.volume.value = volume;
@@ -1596,6 +1642,23 @@ class PlPlayerController with BlockConfigMixin {
     }
   }
 
+  void setPageAutoRotateEnabled(bool enabled, {bool refreshScreenRotation = true}) {
+    if (_pageAutoRotateEnabled == enabled && !refreshScreenRotation) {
+      return;
+    }
+    _pageAutoRotateEnabled = enabled;
+    if (!PlatformUtils.isMobile || !Platform.isAndroid || isFullScreen.value) {
+      return;
+    }
+    if (enabled) {
+      if (refreshScreenRotation) {
+        resetScreenRotation();
+      }
+    } else {
+      portraitUpMode();
+    }
+  }
+
   void onCloseAll() {
     _isCloseAll = true;
     dispose();
@@ -1683,6 +1746,7 @@ class PlPlayerController with BlockConfigMixin {
     videoPlayerController?.setVideoTrack(
       onlyPlayAudio.value ? VideoTrack.no() : VideoTrack.auto(),
     );
+    _syncWakelock();
   }
 
   late final Map<String, ui.Image?> previewCache = {};

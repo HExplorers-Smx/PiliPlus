@@ -126,6 +126,8 @@ class VideoDetailController extends GetxController
 
   /// tabs相关配置
   late TabController tabCtr;
+  List<String> _tabTitles = const [];
+  VoidCallback? _tabRotateListener;
 
   // 请求返回的视频信息
   late PlayUrlModel data;
@@ -363,6 +365,49 @@ class VideoDetailController extends GetxController
       vsync: this,
       initialIndex: Pref.defaultShowComment ? 1 : 0,
     );
+  }
+
+  void syncTabControllerForTabs(List<String> tabs) {
+    _tabTitles = List.unmodifiable(tabs);
+    final int initialIndex = tabs.isEmpty
+        ? 0
+        : tabCtr.index.clamp(0, tabs.length - 1);
+    if (tabCtr.length != tabs.length) {
+      _removeTabRotateListener();
+      tabCtr.dispose();
+      tabCtr = TabController(
+        vsync: this,
+        length: tabs.length,
+        initialIndex: initialIndex,
+      );
+    }
+    _attachTabRotateListener();
+    _syncPageAutoRotateByTab();
+  }
+
+  void _attachTabRotateListener() {
+    if (_tabRotateListener != null) {
+      tabCtr.removeListener(_tabRotateListener!);
+    }
+    _tabRotateListener = _syncPageAutoRotateByTab;
+    tabCtr.addListener(_tabRotateListener!);
+  }
+
+  void _removeTabRotateListener() {
+    if (_tabRotateListener != null) {
+      tabCtr.removeListener(_tabRotateListener!);
+      _tabRotateListener = null;
+    }
+  }
+
+  void _syncPageAutoRotateByTab() {
+    if (_tabTitles.isEmpty) {
+      plPlayerController.setPageAutoRotateEnabled(true);
+      return;
+    }
+    final int index = tabCtr.index.clamp(0, _tabTitles.length - 1);
+    final bool isCommentTab = _tabTitles[index] == '评论';
+    plPlayerController.setPageAutoRotateEnabled(!isCommentTab);
   }
 
   Future<void> getMediaList({
@@ -1221,6 +1266,8 @@ class VideoDetailController extends GetxController
     }
     introScrollCtr?.dispose();
     introScrollCtr = null;
+    _removeTabRotateListener();
+    plPlayerController.setPageAutoRotateEnabled(true);
     tabCtr.dispose();
     _scrollCtr
       ?..removeListener(scrollListener)

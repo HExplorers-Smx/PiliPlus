@@ -8,6 +8,7 @@ import 'package:PiliPlus/models/common/video/video_quality.dart';
 import 'package:PiliPlus/pages/setting/models/model.dart';
 import 'package:PiliPlus/pages/setting/widgets/ordered_multi_select_dialog.dart';
 import 'package:PiliPlus/pages/setting/widgets/select_dialog.dart';
+import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/models/audio_output_type.dart';
 import 'package:PiliPlus/plugin/pl_player/models/hwdec_type.dart';
 import 'package:PiliPlus/utils/storage.dart';
@@ -143,6 +144,27 @@ List<SettingsModel> get videoSettings => [
       leading: const Icon(Icons.speaker_outlined),
       getSubtitle: () => '当前：${Pref.audioOutput}',
       onTap: _showAudioOutputDialog,
+    ),
+  if (Platform.isAndroid)
+    NormalModel(
+      title: '播放器音量增强',
+      leading: const Icon(Icons.volume_up_outlined),
+      getSubtitle: () =>
+          '当前：${Pref.playerVolumeBoost}%\n这是播放器内部放大量；推荐先用 AudioTrack，100% 为原始，越高越响，但过高可能破音',
+      onTap: _showPlayerVolumeBoostDialog,
+    ),
+  if (Platform.isAndroid)
+    NormalModel(
+      title: '播放器预增益',
+      leading: const Icon(Icons.graphic_eq_outlined),
+      getSubtitle: () {
+        final gain = Pref.playerVolumeGain;
+        final text = gain % 1 == 0
+            ? gain.toStringAsFixed(0)
+            : gain.toStringAsFixed(1);
+        return '当前：+$text dB\n这是额外补偿，能解决“同样系统音量下声音比别的播放器小”';
+      },
+      onTap: _showPlayerVolumeGainDialog,
     ),
   const SwitchModel(
     title: '扩大缓冲区',
@@ -400,6 +422,66 @@ Future<void> _showAudioOutputDialog(
       SettingBoxKey.audioOutput,
       res.join(','),
     );
+    setState();
+  }
+}
+
+Future<void> _showPlayerVolumeBoostDialog(
+  BuildContext context,
+  VoidCallback setState,
+) async {
+  const values = [100, 120, 150, 180, 200, 230, 260, 300];
+  final res = await showDialog<int>(
+    context: context,
+    builder: (context) => SelectDialog<int>(
+      title: '播放器音量增强',
+      value: Pref.playerVolumeBoost,
+      values: values
+          .map(
+            (e) => (
+              e,
+              switch (e) {
+                100 => '$e%（原始）',
+                120 => '$e%（默认）',
+                200 => '$e%（更强）',
+                _ => '$e%（增强）',
+              },
+            ),
+          )
+          .toList(),
+    ),
+  );
+  if (res != null) {
+    await GStorage.setting.put(SettingBoxKey.playerVolumeBoost, res);
+    await PlPlayerController.applyPlayerVolumeBoostIfExists();
+    setState();
+  }
+}
+
+
+Future<void> _showPlayerVolumeGainDialog(
+  BuildContext context,
+  VoidCallback setState,
+) async {
+  const values = [0.0, 3.0, 6.0, 9.0, 12.0];
+  final res = await showDialog<double>(
+    context: context,
+    builder: (context) => SelectDialog<double>(
+      title: '播放器预增益',
+      value: Pref.playerVolumeGain,
+      values: values
+          .map(
+            (e) => (
+              e,
+              e == 0 ? '0 dB（关闭）' : '+${e.toStringAsFixed(0)} dB',
+            ),
+          )
+          .toList(),
+    ),
+  );
+  if (res != null) {
+    await GStorage.setting.put(SettingBoxKey.playerVolumeGain, res);
+    await PlPlayerController.applyPlayerVolumeBoostIfExists();
     setState();
   }
 }

@@ -47,18 +47,32 @@ class AppBarAni extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SlideTransition(
-      position: controller.drive(isTop ? _topPos : _bottomPos),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: isTop ? _topDecoration : _bottomDecoration,
-        ),
-        child: ViewSafeArea(
-          left: isFullScreen,
-          right: isFullScreen,
-          child: child,
-        ),
-      ),
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        if (controller.isDismissed) {
+          return const SizedBox.shrink();
+        }
+        return TickerMode(
+          enabled: controller.value > 0.0,
+          child: IgnorePointer(
+            ignoring: controller.value < 1.0,
+            child: SlideTransition(
+              position: controller.drive(isTop ? _topPos : _bottomPos),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: isTop ? _topDecoration : _bottomDecoration,
+                ),
+                child: ViewSafeArea(
+                  left: isFullScreen,
+                  right: isFullScreen,
+                  child: child,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

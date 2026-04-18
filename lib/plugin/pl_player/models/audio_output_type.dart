@@ -6,7 +6,8 @@ enum AudioOutput implements EnumWithLabel {
   audiotrack('AudioTrack'),
   ;
 
-  static final defaultValue = values.map((e) => e.name).join(',');
+  static const legacyDefaultValue = 'opensles,aaudio,audiotrack';
+  static const defaultValue = 'audiotrack,aaudio,opensles';
 
   @override
   final String label;

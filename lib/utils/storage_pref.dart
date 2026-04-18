@@ -255,12 +255,14 @@ abstract final class Pref {
         : HwDecType.auto.hwdec,
   );
 
-  static String get videoSync =>
-      _setting.get(SettingBoxKey.videoSync, defaultValue: 'display-resample');
+  static String get videoSync => _setting.get(
+    SettingBoxKey.videoSync,
+    defaultValue: Platform.isAndroid ? 'audio' : 'display-resample',
+  );
 
   static String get autosync => _setting.get(
     SettingBoxKey.autosync,
-    defaultValue: Platform.isAndroid ? '30' : '0',
+    defaultValue: '0',
   );
 
   static CDNService get defaultCDNService {
@@ -798,10 +800,30 @@ abstract final class Pref {
   static bool get expandBuffer =>
       _setting.get(SettingBoxKey.expandBuffer, defaultValue: false);
 
-  static String get audioOutput => _setting.get(
-    SettingBoxKey.audioOutput,
-    defaultValue: AudioOutput.defaultValue,
+  static String get audioOutput {
+    final String value = _setting.get(
+      SettingBoxKey.audioOutput,
+      defaultValue: AudioOutput.defaultValue,
+    );
+    if (value == AudioOutput.legacyDefaultValue || value.isEmpty) {
+      return AudioOutput.defaultValue;
+    }
+    if (Platform.isAndroid && value == AudioOutput.opensles.name) {
+      return AudioOutput.defaultValue;
+    }
+    return value;
+  }
+
+  static int get playerVolumeBoost => _setting.get(
+    SettingBoxKey.playerVolumeBoost,
+    defaultValue: Platform.isAndroid ? 120 : 100,
   );
+
+  static double get playerVolumeGain => (_setting.get(
+    SettingBoxKey.playerVolumeGain,
+    defaultValue: Platform.isAndroid ? 6.0 : 0.0,
+  ) as num)
+      .toDouble();
 
   static bool get enableAi =>
       _setting.get(SettingBoxKey.enableAi, defaultValue: false);
