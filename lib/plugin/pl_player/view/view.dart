@@ -140,6 +140,8 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
   final RxDouble _brightnessValue = 0.0.obs;
   final RxBool _brightnessIndicator = false.obs;
   Timer? _brightnessTimer;
+  double? _gestureStartBrightness;
+  double? _gestureStartVolume;
 
   late FullScreenMode mode;
 
@@ -329,6 +331,7 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
         );
       }
     } catch (_) {}
+    _brightnessValue.value = value;
     _brightnessIndicator.value = true;
     _brightnessTimer?.cancel();
     _brightnessTimer = Timer(const Duration(milliseconds: 200), () {
@@ -951,10 +954,31 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
       interacting = true;
     }
     initialFocalPoint = localFocalPoint;
+    _resetGestureStartValues();
     // if (kDebugMode) {
     //   debugPrint("_initialFocalPoint$_initialFocalPoint");
     // }
     _gestureType = null;
+  }
+
+  void _resetGestureStartValues() {
+    _gestureStartBrightness = clampDouble(
+      plPlayerController.brightness.value >= 0
+          ? plPlayerController.brightness.value
+          : _brightnessValue.value,
+      0.0,
+      1.0,
+    );
+    _gestureStartVolume = clampDouble(
+      plPlayerController.volume.value,
+      0.0,
+      PlPlayerController.maxVolume,
+    );
+  }
+
+  void _clearGestureStartValues() {
+    _gestureStartBrightness = null;
+    _gestureStartVolume = null;
   }
 
   void _onInteractionUpdate(ScaleUpdateDetails details) {
@@ -1081,7 +1105,16 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
     } else if (_gestureType == GestureType.left) {
       // 左边区域 👈
       final double level = maxHeight * 3;
-      final double brightness = _brightnessValue.value - delta.dy / level;
+      final double startBrightness = _gestureStartBrightness ??
+          clampDouble(
+            plPlayerController.brightness.value >= 0
+                ? plPlayerController.brightness.value
+                : _brightnessValue.value,
+            0.0,
+            1.0,
+          );
+      final double brightness =
+          startBrightness - cumulativeDelta.dy / level;
       final double result = brightness.clamp(0.0, 1.0);
       EasyThrottle.throttle(
         'setBrightness$hashCode',
@@ -1116,18 +1149,19 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
       }
     } else if (_gestureType == GestureType.right) {
       // 右边区域
-      final double level = maxHeight * 0.5;
-      EasyThrottle.throttle(
-        'setVolume$hashCode',
-        const Duration(milliseconds: 32),
-        () {
-          final double volume = clampDouble(
-            plPlayerController.volume.value - delta.dy / level,
+      final double level = maxHeight * 3;
+      final double startVolume = _gestureStartVolume ??
+          clampDouble(
+            plPlayerController.volume.value,
             0.0,
             PlPlayerController.maxVolume,
           );
-          plPlayerController.setVolume(volume);
-        },
+      final double volume = startVolume - cumulativeDelta.dy / level;
+      final double result = volume.clamp(0.0, PlPlayerController.maxVolume);
+      EasyThrottle.throttle(
+        'setVolume$hashCode',
+        const Duration(milliseconds: 32),
+        () => plPlayerController.setVolume(result),
       );
     }
   }
@@ -1151,6 +1185,7 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
     }
     interacting = false;
     initialFocalPoint = Offset.zero;
+    _clearGestureStartValues();
     _gestureType = null;
   }
 
@@ -1283,6 +1318,7 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
   void _onPointerPanZoomUpdate(PointerPanZoomUpdateEvent event) {
     if (plPlayerController.controlsLock.value) return;
     if (_gestureType == null) {
+      _resetGestureStartValues();
       final pan = event.pan;
       if (pan.distanceSquared < 1) return;
       final dx = pan.dx.abs();
@@ -1325,23 +1361,25 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
         return;
       }
 
-      final double level = maxHeight * 0.5;
-      EasyThrottle.throttle(
-        'setVolume$hashCode',
-        const Duration(milliseconds: 32),
-        () {
-          final double volume = clampDouble(
-            plPlayerController.volume.value - event.localPanDelta.dy / level,
+      final double level = maxHeight * 3;
+      final double startVolume = _gestureStartVolume ??
+          clampDouble(
+            plPlayerController.volume.value,
             0.0,
             PlPlayerController.maxVolume,
           );
-          plPlayerController.setVolume(volume);
-        },
+      final double volume = startVolume - event.pan.dy / level;
+      final double result = volume.clamp(0.0, PlPlayerController.maxVolume);
+      EasyThrottle.throttle(
+        'setVolume$hashCode',
+        const Duration(milliseconds: 32),
+        () => plPlayerController.setVolume(result),
       );
     }
   }
 
   void _onPointerPanZoomEnd(PointerPanZoomEndEvent event) {
+    _clearGestureStartValues();
     _gestureType = null;
   }
 
