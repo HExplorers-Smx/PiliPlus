@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:math' show min;
 import 'dart:ui';
@@ -71,6 +72,7 @@ import 'package:extended_nested_scroll_view/extended_nested_scroll_view.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
+import 'package:characters/characters.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 import 'package:get/get.dart';
@@ -1455,6 +1457,18 @@ class VideoDetailController extends GetxController
     return value.isEmpty ? 'audio' : value;
   }
 
+  String _truncateFileNameSegment(String? input, {int maxChars = 8}) {
+    final value = _sanitizeFileName(input ?? '');
+    if (value == 'audio') {
+      return value;
+    }
+    final chars = value.characters;
+    if (chars.length <= maxChars) {
+      return value;
+    }
+    return chars.take(maxChars).toString();
+  }
+
   String _audioExtension(AudioItem? item) {
     final mimeType = item?.mimeType?.toLowerCase() ?? '';
     final codecs = item?.codecs?.toLowerCase() ?? '';
@@ -1534,10 +1548,12 @@ class VideoDetailController extends GetxController
   }
 
   String _buildAudioBaseName({AudioItem? item}) {
-    final parts = <String>[_currentAudioTitle(), bvid, 'cid${cid.value}'];
+    final shortTitle = _truncateFileNameSegment(_currentAudioTitle());
+    final parts = <String>[shortTitle, bvid, 'cid${cid.value}'];
     final subTitle = _currentAudioSubTitle();
-    if (subTitle != null && subTitle.trim().isNotEmpty) {
-      parts.insert(1, subTitle);
+    final shortSubTitle = _truncateFileNameSegment(subTitle);
+    if (subTitle != null && shortSubTitle.trim().isNotEmpty) {
+      parts.insert(1, shortSubTitle);
     }
     final quality = item?.quality;
     if (quality != null && quality.isNotEmpty) {
@@ -1779,6 +1795,17 @@ class VideoDetailController extends GetxController
     return exportFormat.isDirectSave ? '正在保存音频' : '正在导出音频';
   }
 
+  void _audioExportLog(String message, {Object? error, StackTrace? stackTrace}) {
+    final text = '[AudioExport] $message';
+    debugPrint(text);
+    developer.log(
+      text,
+      name: 'AudioExport',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
+
   @pragma('vm:notify-debugger-on-exception')
   Future<void> downloadCurrentAudio({
     AudioItem? selectedAudioItem,
@@ -1789,6 +1816,9 @@ class VideoDetailController extends GetxController
     String? tempPath;
     String? savePath;
     try {
+      _audioExportLog(
+        '开始导出 format=${exportFormat.name}, isFileSource=$isFileSource, selectedUrl=${selectedAudioUrl?.isNotEmpty == true}',
+      );
       AudioItem? currentAudioItem = selectedAudioItem;
       String? currentAudioUrl = selectedAudioUrl ?? audioUrl;
 
@@ -1806,28 +1836,40 @@ class VideoDetailController extends GetxController
           currentAudioItem.playUrls,
           isAudio: true,
         );
+        _audioExportLog(
+          '已解析音频流 itemId=${currentAudioItem?.id}, codec=${currentAudioItem?.codecs}, urlReady=${currentAudioUrl?.isNotEmpty == true}',
+        );
       }
 
       final saveDir = Directory(audioDownloadPath);
       if (!saveDir.existsSync()) {
         await saveDir.create(recursive: true);
+        _audioExportLog('已创建保存目录 path=${saveDir.path}');
       }
       savePath = await _buildUniquePath(
         saveDir.path,
         '${_buildAudioBaseName(item: currentAudioItem)}${_buildAudioOutputExtension(exportFormat, item: currentAudioItem, forcedExtension: forcedExtension)}',
       );
+      _audioExportLog('输出路径 savePath=$savePath');
 
       if (exportFormat.isDirectSave) {
+        _audioExportLog('进入直存分支');
         if (isFileSource) {
           final sourcePath = _resolveCachedAudioSourcePath();
+          _audioExportLog('直存来源=缓存 sourcePath=$sourcePath');
           SmartDialog.showLoading(msg: _audioSavingMessage(exportFormat));
+          _audioExportLog('showLoading msg=${_audioSavingMessage(exportFormat)}');
           await File(sourcePath).copy(savePath);
+          _audioExportLog('缓存复制完成 savePath=$savePath');
         } else {
           if (currentAudioUrl == null || currentAudioUrl.isEmpty) {
+            _audioExportLog('直存失败: 当前视频没有可单独下载的音频流');
             SmartDialog.showToast('当前视频没有可单独下载的音频流');
             return;
           }
           SmartDialog.showLoading(msg: _audioSavingMessage(exportFormat));
+          _audioExportLog('showLoading msg=${_audioSavingMessage(exportFormat)}');
+          _audioExportLog('开始直链下载 url=${currentAudioUrl.http2https}');
           await Request.http11Dio.download(
             currentAudioUrl.http2https,
             savePath,
@@ -1838,48 +1880,75 @@ class VideoDetailController extends GetxController
               },
             ),
           );
+          final file = File(savePath);
+          _audioExportLog(
+            '直链下载完成 exists=${file.existsSync()}, size=${file.existsSync() ? file.lengthSync() : -1}',
+          );
         }
+        _audioExportLog('准备 dismiss loading -> toast(音频已保存)');
         SmartDialog.dismiss();
         SmartDialog.showToast('音频已保存');
+        _audioExportLog('已调用 toast: 音频已保存');
         return;
       }
 
       late final String inputPath;
       if (isFileSource) {
         inputPath = _resolveCachedAudioSourcePath();
+        _audioExportLog('转码来源=缓存 inputPath=$inputPath');
       } else {
         if (currentAudioUrl == null || currentAudioUrl.isEmpty) {
+          _audioExportLog('转码失败: 当前视频没有可单独下载的音频流');
           SmartDialog.showToast('当前视频没有可单独下载的音频流');
           return;
         }
         SmartDialog.showLoading(msg: '正在准备音频');
+        _audioExportLog('showLoading msg=正在准备音频');
         tempPath = await _prepareRemoteAudioTempFile(
           audioUrl: currentAudioUrl,
           extension: forcedExtension ?? _audioExtension(currentAudioItem),
         );
         inputPath = tempPath!;
+        final tempFile = File(inputPath);
+        _audioExportLog(
+          '远程音频准备完成 tempPath=$inputPath, exists=${tempFile.existsSync()}, size=${tempFile.existsSync() ? tempFile.lengthSync() : -1}',
+        );
       }
 
+      _audioExportLog('准备 dismiss loading(准备音频)');
       SmartDialog.dismiss();
       SmartDialog.showLoading(msg: '正在${exportFormat.title}');
+      _audioExportLog('showLoading msg=正在${exportFormat.title}');
+      _audioExportLog('开始转码 inputPath=$inputPath -> savePath=$savePath');
       await _transcodeAudioFile(
         inputPath: inputPath,
         outputPath: savePath,
         exportFormat: exportFormat,
       );
+      final outputFile = File(savePath);
+      _audioExportLog(
+        '转码完成 exists=${outputFile.existsSync()}, size=${outputFile.existsSync() ? outputFile.lengthSync() : -1}',
+      );
+      _audioExportLog('准备 dismiss loading -> toast(音频已保存)');
       SmartDialog.dismiss();
       SmartDialog.showToast('音频已保存');
+      _audioExportLog('已调用 toast: 音频已保存');
     } catch (e, s) {
+      _audioExportLog('导出异常 savePath=$savePath, tempPath=$tempPath, error=$e', error: e, stackTrace: s);
       SmartDialog.dismiss();
       if (savePath != null) {
         await File(savePath).tryDel();
+        _audioExportLog('已删除失败输出文件 savePath=$savePath');
       }
       Utils.reportError(e, s);
       SmartDialog.showToast('音频保存失败: $e');
+      _audioExportLog('已调用失败 toast: 音频保存失败: $e');
     } finally {
       if (tempPath != null) {
         await File(tempPath!).tryDel();
+        _audioExportLog('已清理临时文件 tempPath=$tempPath');
       }
+      _audioExportLog('导出流程结束 format=${exportFormat.name}, savePath=$savePath');
     }
   }
 

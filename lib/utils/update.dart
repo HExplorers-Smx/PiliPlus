@@ -1,3 +1,4 @@
+import 'dart:ffi' show Abi;
 import 'dart:io' show Platform;
 
 import 'package:PiliPlus/build_config.dart';
@@ -28,15 +29,23 @@ abstract final class Update {
           extra: {'account': const NoAccount()},
         ),
       );
-      if (res.data is Map || res.data.isEmpty) {
+      final Map<String, dynamic>? data = _normalizeReleaseData(res.data);
+      if (data == null) {
         if (!isAuto) {
-          SmartDialog.showToast('检查更新失败，GitHub接口未返回数据，请检查网络');
+          SmartDialog.showToast('检查更新失败，GitHub接口未返回有效数据，请检查网络');
         }
         return;
       }
-      final data = res.data[0];
+      final String releaseTime =
+          (data['published_at'] ?? data['created_at'] ?? '').toString();
+      if (releaseTime.isEmpty) {
+        if (!isAuto) {
+          SmartDialog.showToast('检查更新失败，未获取到发布时间');
+        }
+        return;
+      }
       final int latest =
-          DateTime.parse(data['created_at']).millisecondsSinceEpoch ~/ 1000;
+          DateTime.parse(releaseTime).millisecondsSinceEpoch ~/ 1000;
       if (BuildConfig.buildTime >= latest) {
         if (!isAuto) {
           SmartDialog.showToast('已是最新版本');
@@ -59,17 +68,17 @@ abstract final class Update {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${data['tag_name']}',
+                        '${data['tag_name'] ?? data['name'] ?? 'latest'}',
                         style: const TextStyle(fontSize: 20),
                       ),
                       const SizedBox(height: 8),
-                      Text('${data['body']}'),
+                      Text('${data['body'] ?? ''}'),
                       TextButton(
                         onPressed: () => PageUtils.launchURL(
                           '${Constants.sourceCodeUrl}/commits/main',
                         ),
                         child: Text(
-                          "点此查看完整更新(即commit)内容",
+                          '点此查看完整更新(即commit)内容',
                           style: TextStyle(
                             color: theme.colorScheme.primary,
                           ),
@@ -110,7 +119,7 @@ abstract final class Update {
                   downloadBtn('deb', ext: 'deb'),
                   downloadBtn('targz', ext: 'tar.gz'),
                 ] else
-                  downloadBtn('Github'),
+                  downloadBtn('下载'),
               ],
             );
           },
@@ -121,32 +130,89 @@ abstract final class Update {
     }
   }
 
+  static Map<String, dynamic>? _normalizeReleaseData(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is Map) {
+      return Map<String, dynamic>.from(raw);
+    }
+    if (raw is List && raw.isNotEmpty) {
+      final dynamic first = raw.first;
+      if (first is Map) {
+        return Map<String, dynamic>.from(first);
+      }
+    }
+    return null;
+  }
+
+  static String? _abiToAssetName(Abi abi) {
+    switch (abi) {
+      case Abi.androidArm64:
+        return 'arm64-v8a';
+      case Abi.androidArm:
+        return 'armeabi-v7a';
+      case Abi.androidX64:
+        return 'x86_64';
+      case Abi.androidIA32:
+        return 'x86';
+      default:
+        return null;
+    }
+  }
+
+  static String? _findAssetUrl(
+    List<Map<String, dynamic>> assets,
+    List<String> keywords, {
+    String? ext,
+  }) {
+    for (final keyword in keywords) {
+      for (final asset in assets) {
+        final String name = (asset['name'] ?? '').toString().toLowerCase();
+        final bool extOk =
+            ext == null || ext.isEmpty ? true : name.endsWith(ext.toLowerCase());
+        if (extOk && name.contains(keyword.toLowerCase())) {
+          return asset['browser_download_url']?.toString();
+        }
+      }
+    }
+    return null;
+  }
+
   // 下载适用于当前系统的安装包
   static Future<void> onDownload(Map data, {String? ext}) async {
     SmartDialog.dismiss();
     try {
-      void download(String plat) {
-        if (data['assets'].isNotEmpty) {
-          for (Map<String, dynamic> i in data['assets']) {
-            final String name = i['name'];
-            if (name.contains(plat) &&
-                (ext == null || ext.isEmpty ? true : name.endsWith(ext))) {
-              PageUtils.launchURL(i['browser_download_url']);
-              return;
-            }
-          }
-          throw UnsupportedError('platform not found: $plat');
-        }
+      final List<dynamic> rawAssets = data['assets'] as List<dynamic>? ?? <dynamic>[];
+      final List<Map<String, dynamic>> assets = rawAssets
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+      if (assets.isEmpty) {
+        throw UnsupportedError('release assets empty');
       }
 
+      String? url;
       if (Platform.isAndroid) {
-        // 获取设备信息
-        AndroidDeviceInfo androidInfo = await DeviceInfoPlugin().androidInfo;
-        // [arm64-v8a]
-        download(androidInfo.supportedAbis.first);
+        final AndroidDeviceInfo androidInfo = await DeviceInfoPlugin().androidInfo;
+        final String? runtimeAbi = _abiToAssetName(Abi.current());
+        final List<String> keywords = <String>[
+          if (runtimeAbi != null) runtimeAbi,
+          ...androidInfo.supportedAbis,
+          'release.apk',
+          '.apk',
+        ];
+        url = _findAssetUrl(assets, keywords, ext: ext ?? 'apk');
       } else {
-        download(Platform.operatingSystem);
+        url = _findAssetUrl(
+          assets,
+          <String>[Platform.operatingSystem],
+          ext: ext,
+        );
       }
+
+      if (url == null || url.isEmpty) {
+        throw UnsupportedError('platform asset not found');
+      }
+      PageUtils.launchURL(url);
     } catch (e) {
       if (kDebugMode) debugPrint('download error: $e');
       PageUtils.launchURL('${Constants.sourceCodeUrl}/releases/latest');
