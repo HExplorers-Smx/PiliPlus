@@ -37,6 +37,7 @@ import 'package:PiliPlus/utils/global_data.dart';
 import 'package:PiliPlus/utils/image_utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
+import 'package:PiliPlus/utils/reply_tap_behavior.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/url_utils.dart';
@@ -85,6 +86,37 @@ class ReplyItemGrpc extends StatelessWidget {
   static bool enableWordRe = Pref.enableWordRe;
   static int? replyLengthLimit = Pref.replyLengthLimit;
 
+  static const ReplyTapBehavior _tapBehavior = ReplyTapBehavior.videoDefault;
+
+  ReplyTapArea get _selfTapArea =>
+      replyLevel >= 2 ? ReplyTapArea.secondLevelReply : ReplyTapArea.mainReply;
+
+  void _triggerReply(ReplyInfo item) {
+    if (onReply case final onReply?) {
+      onReply(item);
+      return;
+    }
+    replyReply?.call(item, null);
+  }
+
+  void _openSecondLevel() {
+    if (replyReply case final replyReply?) {
+      replyReply(replyItem, null);
+      return;
+    }
+    onCheckReply?.call(replyItem);
+  }
+
+  void _handleTap(ReplyTapArea area, {ReplyInfo? item}) {
+    feedBack();
+    switch (_tapBehavior.actionOf(area)) {
+      case ReplyTapAction.reply:
+        _triggerReply(item ?? replyItem);
+      case ReplyTapAction.openSecondLevel:
+        _openSecondLevel();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
@@ -127,14 +159,7 @@ class ReplyItemGrpc extends StatelessWidget {
     return Material(
       type: MaterialType.transparency,
       child: InkWell(
-        onTap: () {
-          feedBack();
-          if (onReply case final onReply?) {
-            onReply(replyItem);
-            return;
-          }
-          replyReply?.call(replyItem, null);
-        },
+        onTap: () => _handleTap(_selfTapArea, item: replyItem),
         onLongPress: showMore,
         onSecondaryTap: PlatformUtils.isMobile ? null : showMore,
         child: child,
@@ -301,6 +326,8 @@ class ReplyItemGrpc extends StatelessWidget {
   Widget _buildContent(BuildContext context, ThemeData theme) {
     final replyControl = replyItem.replyControl;
     final padding = EdgeInsets.only(left: replyLevel == 0 ? 6 : 45, right: 6);
+    void openReplyDetail() => _handleTap(ReplyTapArea.showMore);
+
     return Column(
       mainAxisSize: .min,
       crossAxisAlignment: .start,
@@ -310,12 +337,6 @@ class ReplyItemGrpc extends StatelessWidget {
         Padding(
           padding: padding,
           child: custom_text.Text.rich(
-            primary: theme.colorScheme.primary,
-            style: TextStyle(
-              height: 1.75,
-              fontSize: theme.textTheme.bodyMedium!.fontSize,
-            ),
-            maxLines: replyLevel == 1 ? replyLengthLimit : null,
             TextSpan(
               children: [
                 if (replyControl.isUpTop) ...[
@@ -342,6 +363,13 @@ class ReplyItemGrpc extends StatelessWidget {
                 ),
               ],
             ),
+            primary: theme.colorScheme.primary,
+            style: TextStyle(
+              height: 1.75,
+              fontSize: theme.textTheme.bodyMedium!.fontSize,
+            ),
+            maxLines: replyLevel == 1 ? replyLengthLimit : null,
+            onShowMore: replyLevel == 1 ? openReplyDetail : null,
           ),
         ),
         if (replyItem.content.pictures.isNotEmpty) ...[
@@ -514,6 +542,8 @@ class ReplyItemGrpc extends StatelessWidget {
   ) {
     final extraRow = replies.length < replyItem.count.toInt();
     late final length = replies.length + (extraRow ? 1 : 0);
+
+
     return Padding(
       padding: const EdgeInsets.only(left: 42, right: 4),
       child: Material(
@@ -521,9 +551,11 @@ class ReplyItemGrpc extends StatelessWidget {
         borderRadius: const BorderRadius.all(Radius.circular(6)),
         clipBehavior: Clip.hardEdge,
         animationDuration: Duration.zero,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+        child: InkWell(
+          onTap: () => _handleTap(ReplyTapArea.previewReplies),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
             if (replies.isNotEmpty)
               ...List.generate(replies.length, (index) {
                 final childReply = replies[index];
@@ -556,24 +588,12 @@ class ReplyItemGrpc extends StatelessWidget {
                   },
                 );
                 return InkWell(
-                  onTap: () {
-                    feedBack();
-                    replyReply?.call(replyItem, childReply.id.toInt());
-                  },
+                  onTap: () => _handleTap(ReplyTapArea.previewReplies, item: childReply),
                   onLongPress: showMore,
                   onSecondaryTap: PlatformUtils.isMobile ? null : showMore,
                   child: Padding(
                     padding: padding,
                     child: Text.rich(
-                      style: TextStyle(
-                        fontSize: theme.textTheme.bodyMedium!.fontSize,
-                        color: theme.colorScheme.onSurface.withValues(
-                          alpha: 0.85,
-                        ),
-                        height: 1.6,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 2,
                       TextSpan(
                         children: [
                           TextSpan(
@@ -618,13 +638,22 @@ class ReplyItemGrpc extends StatelessWidget {
                           ),
                         ],
                       ),
+                      style: TextStyle(
+                        fontSize: theme.textTheme.bodyMedium!.fontSize,
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.85,
+                        ),
+                        height: 1.6,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 2,
                     ),
                   ),
                 );
               }),
             if (extraRow)
               InkWell(
-                onTap: () => replyReply?.call(replyItem, null),
+                onTap: () => _handleTap(ReplyTapArea.previewReplies),
                 child: Padding(
                   padding: length == 1
                       ? const EdgeInsets.fromLTRB(8, 6, 8, 6)
@@ -658,7 +687,8 @@ class ReplyItemGrpc extends StatelessWidget {
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 
   InlineSpan _buildMessage(
