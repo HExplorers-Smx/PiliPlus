@@ -18,6 +18,7 @@ import android.provider.Settings
 import android.view.WindowManager.LayoutParams
 import androidx.core.net.toUri
 import com.example.piliplus.audio.AudioExportBridge
+import com.example.piliplus.video.VideoExportBridge
 import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -157,6 +158,30 @@ class MainActivity : AudioServiceActivity() {
                                 result.error(
                                     "AUDIO_EXPORT_FAILED",
                                     e.message ?: "音频导出失败",
+                                    e.stackTraceToString()
+                                )
+                            }
+                        }
+                    }.start()
+                }
+
+                "exportCachedVideoToMp4" -> {
+                    val videoPath = call.argument<String>("videoPath")
+                    val audioPath = call.argument<String?>("audioPath")
+                    val outputPath = call.argument<String>("outputPath")
+                    if (videoPath.isNullOrBlank() || outputPath.isNullOrBlank()) {
+                        result.error("INVALID_ARGS", "缺少缓存视频导出参数", null)
+                        return@setMethodCallHandler
+                    }
+                    Thread {
+                        try {
+                            VideoExportBridge.exportToMp4(videoPath, audioPath, outputPath)
+                            runOnUiThread { result.success(true) }
+                        } catch (e: Exception) {
+                            runOnUiThread {
+                                result.error(
+                                    "VIDEO_EXPORT_FAILED",
+                                    e.message ?: "缓存视频导出失败",
                                     e.stackTraceToString()
                                 )
                             }

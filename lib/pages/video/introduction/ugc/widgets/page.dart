@@ -34,7 +34,7 @@ class PagesPanel extends StatefulWidget {
   final UgcIntroController ugcIntroController;
 
   final Set<int>? cidSet;
-  final bool Function(Part part)? onDownload;
+  final Future<bool> Function(Part part)? onDownload;
 
   @override
   State<PagesPanel> createState() => _PagesPanelState();
@@ -167,9 +167,9 @@ class _PagesPanelState extends State<PagesPanel> {
                   borderRadius: const BorderRadius.all(Radius.circular(6)),
                   child: InkWell(
                     borderRadius: const BorderRadius.all(Radius.circular(6)),
-                    onTap: () {
+                    onTap: () async {
                       if (widget.onDownload case final onDownload?) {
-                        if (onDownload(item) && mounted) {
+                        if (await onDownload(item) && mounted) {
                           setState(() {});
                         }
                         return;

@@ -235,13 +235,13 @@ class _DownloadPanelState extends State<DownloadPanel> {
 
   late final int? vipStatus = Pref.userInfoCache?.vipStatus;
   @pragma('vm:notify-debugger-on-exception')
-  bool _onDownload({
+  Future<bool> _onDownload({
     required int index,
     required ugc.BaseEpisodeItem episode,
     bool isFromList = false,
     bool isDownloadAll = false,
     ugc.EpisodeItem? parent,
-  }) {
+  }) async {
     final cid = episode.cid;
     // on download
     if (cid == null) {
@@ -268,12 +268,9 @@ class _DownloadPanelState extends State<DownloadPanel> {
     if (episode is ugc.EpisodeItem) {
       final pages = episode.pages!;
       if (pages.length > 1) {
-        if (isFromList && kDebugMode) {
-          SmartDialog.showToast('hasParts');
-        }
         if (isDownloadAll) {
           for (int i = 0; i < pages.length; i++) {
-            _onDownload(
+            await _onDownload(
               index: i,
               episode: pages[i],
               parent: episode,
@@ -281,39 +278,54 @@ class _DownloadPanelState extends State<DownloadPanel> {
           }
           return true;
         }
+        if (isFromList) {
+          final currentCid =
+              widget.videoDetailController.seasonCid ??
+              widget.videoDetailController.cid.value;
+          Part targetPart = pages.first;
+          for (final item in pages) {
+            if (item.cid == currentCid) {
+              targetPart = item;
+              break;
+            }
+          }
+          return _onDownload(
+            index: index,
+            episode: targetPart,
+            parent: episode,
+          );
+        }
+        SmartDialog.showToast('该视频包含多个分P，请选择具体分P后缓存');
         return false;
       }
     }
 
     try {
-      switch (episode) {
-        case Part part:
-          _downloadService.downloadVideo(
-            part,
-            parent == null ? widget.videoDetail : null,
-            parent,
-            _quality,
-          );
-          break;
-        case ugc.EpisodeItem episode:
-          _downloadService.downloadVideo(
-            episode.pages!.first,
-            null,
-            episode,
-            _quality,
-          );
-          break;
-        case pgc.EpisodeItem episode:
-          _downloadService.downloadBangumi(
-            index,
-            widget.pgcItem!,
-            episode,
-            _quality,
-          );
-          break;
+      final bool success = switch (episode) {
+        Part part => await _downloadService.downloadVideo(
+          part,
+          parent == null ? widget.videoDetail : null,
+          parent,
+          _quality,
+        ),
+        ugc.EpisodeItem episode => await _downloadService.downloadVideo(
+          episode.pages!.first,
+          null,
+          episode,
+          _quality,
+        ),
+        pgc.EpisodeItem episode => await _downloadService.downloadBangumi(
+          index,
+          widget.pgcItem!,
+          episode,
+          _quality,
+        ),
+        _ => false,
+      };
+      if (success) {
+        cidSet.add(cid);
       }
-      cidSet.add(cid);
-      return true;
+      return success;
     } catch (e, s) {
       Utils.reportError(e, s);
       SmartDialog.showToast(e.toString());
@@ -390,8 +402,8 @@ class _DownloadPanelState extends State<DownloadPanel> {
             return Material(
               type: MaterialType.transparency,
               child: InkWell(
-                onTap: () {
-                  if (_onDownload(
+                onTap: () async {
+                  if (await _onDownload(
                     index: index,
                     episode: episode,
                     isFromList: true,
@@ -547,9 +559,9 @@ class _DownloadPanelState extends State<DownloadPanel> {
               showConfirmDialog(
                 context: context,
                 title: const Text('确定缓存全部？'),
-                onConfirm: () {
+                onConfirm: () async {
                   for (int i = 0; i < widget.episodes.length; i++) {
-                    _onDownload(
+                    await _onDownload(
                       index: i,
                       episode: widget.episodes[i],
                       isDownloadAll: true,

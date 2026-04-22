@@ -1,6 +1,7 @@
 import 'dart:io' show Platform, Process;
 
 import 'package:PiliPlus/models/common/video/video_type.dart';
+import 'package:PiliPlus/utils/cached_video_export_utils.dart';
 import 'package:PiliPlus/pages/common/multi_select/base.dart'
     show MultiSelectData;
 import 'package:PiliPlus/utils/page_utils.dart';
@@ -120,6 +121,13 @@ class BiliDownloadEntryInfo with MultiSelectData {
               }
             },
           ),
+        PopupMenuItem(
+          height: 38,
+          child: const Text('导出为 MP4', style: TextStyle(fontSize: 13)),
+          onTap: () {
+            CachedVideoExportUtils.exportEntryToMp4(this);
+          },
+        ),
         if (ownerId case final mid?)
           PopupMenuItem(
             height: 38,

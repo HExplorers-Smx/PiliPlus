@@ -23,6 +23,7 @@ import 'package:PiliPlus/utils/path_utils.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
+import 'package:PiliPlus/utils/utils.dart';
 import 'package:get/get.dart';
 import 'package:path/path.dart' as path;
 import 'package:synchronized/synchronized.dart';
@@ -108,18 +109,18 @@ class DownloadService extends GetxService {
     return result;
   }
 
-  void downloadVideo(
+  Future<bool> downloadVideo(
     Part page,
     VideoDetailData? videoDetail,
     ugc.EpisodeItem? videoArc,
     VideoQuality videoQuality,
-  ) {
+  ) async {
     final cid = page.cid!;
     if (downloadList.indexWhere((e) => e.cid == cid) != -1) {
-      return;
+      return Future.value(false);
     }
     if (waitDownloadQueue.indexWhere((e) => e.cid == cid) != -1) {
-      return;
+      return Future.value(false);
     }
     final pageData = PageInfo(
       cid: cid,
@@ -165,21 +166,21 @@ class DownloadService extends GetxService {
       ownerName: videoDetail?.owner?.name ?? videoArc?.arc?.author?.name,
       pageData: pageData,
     );
-    _createDownload(entry);
+    return await _createDownload(entry);
   }
 
-  void downloadBangumi(
+  Future<bool> downloadBangumi(
     int index,
     PgcInfoModel pgcItem,
     pgc.EpisodeItem episode,
     VideoQuality quality,
-  ) {
+  ) async {
     final cid = episode.cid!;
     if (downloadList.indexWhere((e) => e.cid == cid) != -1) {
-      return;
+      return Future.value(false);
     }
     if (waitDownloadQueue.indexWhere((e) => e.cid == cid) != -1) {
-      return;
+      return Future.value(false);
     }
     final currentTime = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final source = SourceInfo(
@@ -234,20 +235,31 @@ class DownloadService extends GetxService {
       ownerName: pgcItem.upInfo?.uname,
       pageData: null,
     );
-    _createDownload(entry);
+    return await _createDownload(entry);
   }
 
-  Future<void> _createDownload(BiliDownloadEntryInfo entry) async {
-    final entryDir = await _getDownloadEntryDir(entry);
-    final entryJsonFile = File(path.join(entryDir.path, _entryFile));
-    await entryJsonFile.writeAsString(jsonEncode(entry.toJson()));
-    entry
-      ..pageDirPath = entryDir.parent.path
-      ..entryDirPath = entryDir.path
-      ..status = DownloadStatus.wait;
-    waitDownloadQueue.add(entry);
-    if (curDownload.value?.status.isDownloading != true) {
-      startDownload(entry);
+  Future<bool> _createDownload(BiliDownloadEntryInfo entry) async {
+    try {
+      final entryDir = await _getDownloadEntryDir(entry);
+      final entryJsonFile = File(path.join(entryDir.path, _entryFile));
+      await entryJsonFile.writeAsString(jsonEncode(entry.toJson()));
+      entry
+        ..pageDirPath = entryDir.parent.path
+        ..entryDirPath = entryDir.path
+        ..status = DownloadStatus.wait;
+      waitDownloadQueue.add(entry);
+      flagNotifier.refresh();
+      if (curDownload.value?.status.isDownloading != true) {
+        await startDownload(entry);
+      }
+      return true;
+    } catch (e, s) {
+      Utils.reportError(e, s);
+      if (kDebugMode) {
+        debugPrint('create download error: $e\n\n$s');
+      }
+      SmartDialog.showToast('加入缓存失败');
+      return false;
     }
   }
 
@@ -432,11 +444,13 @@ class DownloadService extends GetxService {
         default:
           break;
       }
-    } catch (e) {
+    } catch (e, s) {
       _updateCurStatus(DownloadStatus.failPlayUrl);
+      Utils.reportError(e, s);
       if (kDebugMode) {
-        debugPrint('get download url error: $e');
+        debugPrint('get download url error: $e\n\n$s');
       }
+      SmartDialog.showToast('获取缓存地址失败');
     }
   }
 

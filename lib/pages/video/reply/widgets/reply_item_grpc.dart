@@ -127,7 +127,14 @@ class ReplyItemGrpc extends StatelessWidget {
     return Material(
       type: MaterialType.transparency,
       child: InkWell(
-        onTap: () => replyReply?.call(replyItem, null),
+        onTap: () {
+          feedBack();
+          if (onReply case final onReply?) {
+            onReply(replyItem);
+            return;
+          }
+          replyReply?.call(replyItem, null);
+        },
         onLongPress: showMore,
         onSecondaryTap: PlatformUtils.isMobile ? null : showMore,
         child: child,
@@ -454,29 +461,6 @@ class ReplyItemGrpc extends StatelessWidget {
     return Row(
       children: [
         const SizedBox(width: 36),
-        SizedBox(
-          height: 32,
-          child: TextButton(
-            style: buttonStyle,
-            onPressed: () {
-              feedBack();
-              onReply?.call(replyItem);
-            },
-            child: Row(
-              spacing: 3,
-              mainAxisSize: .min,
-              children: [
-                Icon(
-                  Icons.reply,
-                  size: 18,
-                  color: theme.colorScheme.outline.withValues(alpha: 0.8),
-                ),
-                Text('回复', style: textStyle),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(width: 2),
         if (replyControl.translationSwitch ==
             .TRANSLATION_SWITCH_SHOW_TRANSLATION) ...[
           _buildTranslateBtn(
@@ -572,8 +556,10 @@ class ReplyItemGrpc extends StatelessWidget {
                   },
                 );
                 return InkWell(
-                  onTap: () =>
-                      replyReply?.call(replyItem, childReply.id.toInt()),
+                  onTap: () {
+                    feedBack();
+                    replyReply?.call(replyItem, childReply.id.toInt());
+                  },
                   onLongPress: showMore,
                   onSecondaryTap: PlatformUtils.isMobile ? null : showMore,
                   child: Padding(

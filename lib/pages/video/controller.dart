@@ -61,6 +61,7 @@ import 'package:PiliPlus/utils/extension/iterable_ext.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
 import 'package:PiliPlus/utils/extension/size_ext.dart';
 import 'package:PiliPlus/utils/extension/string_ext.dart';
+import 'package:PiliPlus/utils/media_export_naming_utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/path_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
@@ -72,7 +73,6 @@ import 'package:extended_nested_scroll_view/extended_nested_scroll_view.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
-import 'package:characters/characters.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 import 'package:get/get.dart';
@@ -1449,26 +1449,6 @@ class VideoDetailController extends GetxController
     );
   }
 
-  String _sanitizeFileName(String input) {
-    final value = input
-        .replaceAll(RegExp(r'[<>:/\|?*"]'), ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    return value.isEmpty ? 'audio' : value;
-  }
-
-  String _truncateFileNameSegment(String? input, {int maxChars = 8}) {
-    final value = _sanitizeFileName(input ?? '');
-    if (value == 'audio') {
-      return value;
-    }
-    final chars = value.characters;
-    if (chars.length <= maxChars) {
-      return value;
-    }
-    return chars.take(maxChars).toString();
-  }
-
   String _audioExtension(AudioItem? item) {
     final mimeType = item?.mimeType?.toLowerCase() ?? '';
     final codecs = item?.codecs?.toLowerCase() ?? '';
@@ -1548,18 +1528,11 @@ class VideoDetailController extends GetxController
   }
 
   String _buildAudioBaseName({AudioItem? item}) {
-    final shortTitle = _truncateFileNameSegment(_currentAudioTitle());
-    final parts = <String>[shortTitle, bvid, 'cid${cid.value}'];
-    final subTitle = _currentAudioSubTitle();
-    final shortSubTitle = _truncateFileNameSegment(subTitle);
-    if (subTitle != null && shortSubTitle.trim().isNotEmpty) {
-      parts.insert(1, shortSubTitle);
-    }
-    final quality = item?.quality;
-    if (quality != null && quality.isNotEmpty) {
-      parts.insert(parts.length - 2, quality);
-    }
-    return _sanitizeFileName(parts.where((e) => e.trim().isNotEmpty).join(' - '));
+    return MediaExportNamingUtils.buildBaseName(
+      title: _currentAudioTitle(),
+      cid: cid.value,
+      fallback: MediaExportNamingUtils.defaultAudioFallbackName,
+    );
   }
 
   Future<void> showAudioDownloadSheet() async {
@@ -1986,21 +1959,24 @@ class VideoDetailController extends GetxController
         }
       }
     }
-    if (episodes != null && episodes.isNotEmpty) {
-      final downloadService = Get.find<DownloadService>();
-      await downloadService.waitForInitialization;
-      if (!context.mounted) {
-        return;
-      }
-      final Set<int> cidSet = downloadService.downloadList
-          .followedBy(downloadService.waitDownloadQueue)
-          .map((e) => e.cid)
-          .toSet();
-      final index = episodes.indexWhere(
-        (e) => e.cid == (seasonCid ?? cid.value),
-      );
+    if (episodes == null || episodes.isEmpty) {
+      SmartDialog.showToast('未获取到可缓存的视频分P/剧集');
+      return;
+    }
+    final downloadService = Get.find<DownloadService>();
+    await downloadService.waitForInitialization;
+    if (!context.mounted) {
+      return;
+    }
+    final Set<int> cidSet = downloadService.downloadList
+        .followedBy(downloadService.waitDownloadQueue)
+        .map((e) => e.cid)
+        .toSet();
+    final index = episodes.indexWhere(
+      (e) => e.cid == (seasonCid ?? cid.value),
+    );
 
-      showModalBottomSheet(
+    showModalBottomSheet(
         context: context,
         useSafeArea: true,
         isScrollControlled: true,
@@ -2033,7 +2009,6 @@ class VideoDetailController extends GetxController
           );
         },
       );
-    }
   }
 
   void editPlayUrl() {
