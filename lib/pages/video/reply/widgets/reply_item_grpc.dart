@@ -486,9 +486,10 @@ class ReplyItemGrpc extends StatelessWidget {
       tapTargetSize: .shrinkWrap,
       padding: WidgetStatePropertyAll(.zero),
     );
+    final actionLeadingWidth = replyLevel == 0 ? 6.0 : 45.0;
     return Row(
       children: [
-        const SizedBox(width: 36),
+        SizedBox(width: actionLeadingWidth),
         if (replyControl.translationSwitch ==
             .TRANSLATION_SWITCH_SHOW_TRANSLATION) ...[
           _buildTranslateBtn(
@@ -500,11 +501,16 @@ class ReplyItemGrpc extends StatelessWidget {
           ),
           const SizedBox(width: 2),
         ] else if (replyItem.replyControl.cardLabels.isNotEmpty) ...[
-          Text(
-            replyItem.replyControl.cardLabels
-                .map((e) => e.textContent)
-                .join('  '),
-            style: textStyle.copyWith(color: theme.colorScheme.secondary),
+          Flexible(
+            fit: FlexFit.loose,
+            child: Text(
+              replyItem.replyControl.cardLabels
+                  .map((e) => e.textContent)
+                  .join('  '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: textStyle.copyWith(color: theme.colorScheme.primary),
+            ),
           ),
           const SizedBox(width: 2),
         ],
