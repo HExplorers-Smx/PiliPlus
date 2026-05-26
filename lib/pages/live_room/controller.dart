@@ -149,7 +149,7 @@ class LiveRoomController extends GetxController {
   void _showRank() {
     if (ruid case final ruid?) {
       final heightFactor =
-          PlatformUtils.isMobile && !Get.mediaQuery.size.isPortrait ? 1.0 : 0.7;
+          PlatformUtils.isMobile && !MediaQuery.sizeOf(Get.context!).isPortrait ? 1.0 : 0.7;
       showModalBottomSheet(
         context: Get.context!,
         useSafeArea: true,
@@ -280,7 +280,7 @@ class LiveRoomController extends GetxController {
             onPressed: Get.back,
             child: Text(
               '关闭',
-              style: TextStyle(color: Get.theme.colorScheme.outline),
+              style: TextStyle(color: Theme.of(Get.context!).colorScheme.outline),
             ),
           ),
           TextButton(

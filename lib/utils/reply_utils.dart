@@ -117,7 +117,7 @@ abstract final class ReplyUtils {
                 '/webview',
                 parameters: {
                   'url':
-                      'https://www.bilibili.com/h5/comment/appeal?${Utils.themeUrl(Get.isDarkMode)}',
+                      'https://www.bilibili.com/h5/comment/appeal?${Utils.themeUrl(Theme.of(Get.context!).brightness == Brightness.dark)}',
                 },
               );
             },
@@ -128,7 +128,7 @@ abstract final class ReplyUtils {
             onPressed: Get.back,
             child: Text(
               '关闭',
-              style: TextStyle(color: Get.theme.colorScheme.outline),
+              style: TextStyle(color: Theme.of(Get.context!).colorScheme.outline),
             ),
           ),
       ];

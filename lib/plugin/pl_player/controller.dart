@@ -578,7 +578,6 @@ class PlPlayerController with BlockConfigMixin {
     if (PlatformUtils.isMobile) {
       _orientationListener = NativeDeviceOrientationPlatform.instance
           .onOrientationChanged(
-            useSensor: Platform.isAndroid,
             checkIsAutoRotate: checkIsAutoRotate,
           )
           .listen(_onOrientationChanged);
@@ -1805,13 +1804,13 @@ class PlPlayerController with BlockConfigMixin {
                 padding: const EdgeInsets.only(right: 12),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
-                    maxWidth: min(Get.width / 3, 350),
+                    maxWidth: min(MediaQuery.widthOf(Get.context!) / 3, 350),
                   ),
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       border: Border.all(
                         width: 5,
-                        color: Get.theme.colorScheme.surface,
+                        color: Theme.of(Get.context!).colorScheme.surface,
                       ),
                     ),
                     child: Padding(

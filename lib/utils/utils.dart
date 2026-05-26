@@ -10,6 +10,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:share_plus/share_plus.dart';
@@ -99,7 +100,7 @@ abstract final class Utils {
 
   static Future<Rect?> get sharePositionOrigin async {
     if (await isIpad) {
-      final size = Get.size;
+      final size = MediaQuery.sizeOf(Get.context!);
       return Rect.fromLTRB(0, 0, size.width, size.height / 2);
     }
     return null;

@@ -503,13 +503,23 @@ class ReplyItemGrpc extends StatelessWidget {
         ] else if (replyItem.replyControl.cardLabels.isNotEmpty) ...[
           Flexible(
             fit: FlexFit.loose,
-            child: Text(
-              replyItem.replyControl.cardLabels
-                  .map((e) => e.textContent)
-                  .join('  '),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: textStyle.copyWith(color: theme.colorScheme.primary),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.outline.withValues(alpha: 0.12),
+                borderRadius: const BorderRadius.all(Radius.circular(4)),
+              ),
+              child: Text(
+                replyItem.replyControl.cardLabels
+                    .map((e) => e.textContent)
+                    .join('  '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: textStyle.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontSize: 12,
+                ),
+              ),
             ),
           ),
           const SizedBox(width: 2),

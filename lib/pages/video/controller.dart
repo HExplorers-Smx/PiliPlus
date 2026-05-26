@@ -574,7 +574,7 @@ class VideoDetailController extends GetxController
 
   @override
   Widget buildItem(Object item, Animation<double> animation) {
-    final theme = Get.theme;
+    final theme = Theme.of(Get.context!);
     return Align(
       alignment: Alignment.centerLeft,
       child: SlideTransition(
@@ -1619,7 +1619,7 @@ class VideoDetailController extends GetxController
     await _showBottomSheet(
       SafeArea(
         child: Material(
-          color: Get.theme.colorScheme.surface,
+          color: Theme.of(Get.context!).colorScheme.surface,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1645,7 +1645,7 @@ class VideoDetailController extends GetxController
     await _showBottomSheet(
       SafeArea(
         child: Material(
-          color: Get.theme.colorScheme.surface,
+          color: Theme.of(Get.context!).colorScheme.surface,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
